@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebXR AR Floor Placement</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+        "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/loaders/GLTFLoader.js",
+        "three/examples/jsm/webxr/ARButton.js": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/webxr/ARButton.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+    import { ARButton } from 'three/examples/jsm/webxr/ARButton.js';
+
+    // Scene setup
+    const scene = new THREE.Scene();
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+    // Renderer setup
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // Light
+    const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+    scene.add(light);
+
+    // GLTF model
+    let model;
+    const loader = new GLTFLoader();
+    loader.load(
+      'https://cdn.jsdelivr.net/gh/xab-bax/Demo/Assets/Glb%20Models/burger.glb',
+      (gltf) => {
+        model = gltf.scene;
+        model.scale.set(0.2, 0.2, 0.2); // Adjust model size
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading model:', error);
+      }
+    );
+
+    // Add an AR button to enter AR mode
+    document.body.appendChild(ARButton.createButton(renderer));
+
+    // Handle AR session
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
+
+    // Animation loop
+    function animate() {
+      renderer.setAnimationLoop(render);
+    }
+
+    function render(timestamp, frame) {
+      if (frame) {
+        const referenceSpace = renderer.xr.getReferenceSpace();
+        const session = renderer.xr.getSession();
+
+        if (hitTestSourceRequested === false) {
+          session.requestReferenceSpace('viewer').then((refSpace) => {
+            session
+              .requestHitTestSource({ space: refSpace })
+              .then((source) => {
+                hitTestSource = source;
+              });
+          });
+
+          session.addEventListener('end', () => {
+            hitTestSourceRequested = false;
+            hitTestSource = null;
+          });
+
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(referenceSpace);
+
+            // Place the model on the detected surface
+            if (model) {
+              model.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+              if (!scene.children.includes(model)) {
+                scene.add(model);
+              }
+            }
+          }
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+</body>
+</html>
